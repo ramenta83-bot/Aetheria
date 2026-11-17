@@ -1,0 +1,195 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #0d1117;
+  color: #c9d1d9;
+  font-family: "Consolas", "Courier New", Courier, monospace;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.mud-shell {
+  width: 100%;
+  max-width: 1080px;
+  height: 96vh;
+  background-color: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mud-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  background-color: #0d1117;
+  border-bottom: 1px solid #30363d;
+}
+
+.brand-title {
+  color: #58a6ff;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  font-size: 0.9rem;
+}
+
+.conn-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.conn-badge.connected {
+  background-color: #1f3d2b;
+  color: #7ee787;
+  border: 1px solid #2ea043;
+}
+
+.conn-badge.disconnected {
+  background-color: #3d1f24;
+  color: #ff7b72;
+  border: 1px solid #f85149;
+}
+
+.vitals-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.55rem 1rem;
+  background-color: #12171e;
+  border-bottom: 1px solid #30363d;
+  font-size: 0.85rem;
+}
+
+.vital-item {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.vital-label {
+  color: #8b949e;
+}
+
+.vital-value {
+  color: #f0f6fc;
+  font-weight: bold;
+}
+
+.vital-value.ready {
+  color: #7ee787;
+}
+
+.vital-value.locked {
+  color: #ffa657;
+}
+
+.stage-container {
+  background-color: #090c10;
+  border-bottom: 1px solid #30363d;
+  padding: 0.5rem 1rem;
+}
+
+.ambient-stage {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.8rem;
+  line-height: 1.1;
+  color: #79c0ff;
+  min-height: 2.3em;
+  white-space: pre;
+  overflow: hidden;
+  border-bottom: 1px dashed #21262d;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+}
+
+.ascii-stage {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.85rem;
+  line-height: 1.1;
+  color: #7ee787;
+  min-height: 5.5em;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.terminal-output {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  line-height: 1.45;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+}
+
+.log-line {
+  margin-bottom: 0.45rem;
+}
+
+.log-room-title {
+  color: #58a6ff;
+  font-weight: bold;
+  margin-top: 0.6rem;
+}
+
+.log-combat {
+  color: #ffa657;
+}
+
+.log-system {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.log-echo {
+  color: #7ee787;
+}
+
+.command-bar {
+  display: flex;
+  align-items: center;
+  background-color: #0d1117;
+  border-top: 1px solid #30363d;
+  padding: 0.6rem 0.85rem;
+  gap: 0.6rem;
+}
+
+.prompt-glyph {
+  color: #7ee787;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+#command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #f0f6fc;
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.send-btn {
+  background-color: #238636;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.9rem;
+  font-family: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.send-btn:hover {
+  background-color: #2ea043;
+}
