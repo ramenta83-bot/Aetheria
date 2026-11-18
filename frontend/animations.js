@@ -166,7 +166,7 @@ const ASCII_ANIMATIONS = {
   ],
   victory_spark: [
     "    .  *  .   ",
-    "  *  \o/  *  (Foe Defeated!)",
+    "  *  \\o/  *  (Foe Defeated!)",
     "    .  *  .   "
   ],
   boss_roar: [
@@ -189,25 +189,32 @@ const ASCII_ANIMATIONS = {
 };
 
 class AsciiStagePlayer {
-  constructor(stageElementId) {
+  constructor(stageElementId, ambientElementId) {
     this.stage = document.getElementById(stageElementId);
+    this.ambientStage = document.getElementById(ambientElementId);
     this.timer = null;
-    this.ambientFrames = null;
-    this.ambientIndex = 0;
+    this.ambientTimer = null;
+  }
+
+  startAmbient(effectName, speedMs = 900) {
+    const frames = ASCII_ANIMATIONS[effectName];
+    if (!frames || !this.ambientStage) return;
+
+    clearInterval(this.ambientTimer);
+    let idx = 0;
+    this.ambientStage.textContent = frames[0];
+
+    if (frames.length > 1) {
+      this.ambientTimer = setInterval(() => {
+        idx = (idx + 1) % frames.length;
+        this.ambientStage.textContent = frames[idx];
+      }, speedMs);
+    }
   }
 
   play(effectName, speedMs = 110) {
     const frames = ASCII_ANIMATIONS[effectName];
     if (!frames || !this.stage) return;
-
-    // If effect is an ambient room loop, store it as the idle background banner
-    if (effectName.startsWith("astral_") || effectName.startsWith("swamp_") ||
-        effectName.startsWith("town_") || effectName.startsWith("forge_") ||
-        effectName.startsWith("arena_") || effectName.startsWith("radiant_") ||
-        effectName.startsWith("forest_") || effectName.startsWith("candle_")) {
-      this.ambientFrames = frames;
-      this.ambientIndex = 0;
-    }
 
     clearInterval(this.timer);
     let idx = 0;
@@ -217,11 +224,11 @@ class AsciiStagePlayer {
       idx++;
       if (idx < frames.length) {
         this.stage.textContent = frames[idx];
-      } else if (this.ambientFrames) {
-        this.ambientIndex = (this.ambientIndex + 1) % this.ambientFrames.length;
-        this.stage.textContent = this.ambientFrames[this.ambientIndex];
       } else {
         clearInterval(this.timer);
+        setTimeout(() => {
+          if (this.stage) this.stage.textContent = "";
+        }, 600);
       }
     }, speedMs);
   }

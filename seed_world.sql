@@ -1,10 +1,116 @@
 -- ============================================================================
--- Web MUD World & 7-Class Seed Script (seed_world.sql)
--- Compatible with MySQL 8.0+ / MariaDB (XAMPP / phpMyAdmin)
+-- Aetheria Web MUD: Complete Database Schema & World Seed (seed_world.sql)
+-- Compatible with MySQL 8.0+ / MariaDB (XAMPP / phpMyAdmin / Command Line)
 -- ============================================================================
+
+CREATE DATABASE IF NOT EXISTS aetheria_mud CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE aetheria_mud;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+
+-- ============================================================================
+-- PART 1: TABLE DEFINITIONS (SCHEMA)
+-- ============================================================================
+
+-- 1. Guilds / Classes
+CREATE TABLE IF NOT EXISTS guilds (
+    guild_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(50) NOT NULL,
+    base_hp INT NOT NULL DEFAULT 100,
+    base_resource INT NOT NULL DEFAULT 100,
+    starting_room_id VARCHAR(100) NOT NULL,
+    lifesteal_pct DECIMAL(4,2) NOT NULL DEFAULT 0.00,
+    description TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 2. Universal Skills
+CREATE TABLE IF NOT EXISTS skills (
+    skill_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    description TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3. Zones & Rooms
+CREATE TABLE IF NOT EXISTS rooms (
+    room_id VARCHAR(100) PRIMARY KEY,
+    zone_name VARCHAR(100) NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    description TEXT NOT NULL,
+    exits_json JSON NOT NULL,
+    ambient_anim VARCHAR(50) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 4. Abilities & Spells
+CREATE TABLE IF NOT EXISTS abilities (
+    ability_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    guild_id VARCHAR(50) NOT NULL,
+    rank_required INT NOT NULL DEFAULT 1,
+    resource_cost INT NOT NULL DEFAULT 10,
+    recovery_sec INT NOT NULL DEFAULT 3,
+    skill_id VARCHAR(50) NOT NULL,
+    effect_type VARCHAR(50) NOT NULL,
+    base_power INT NOT NULL DEFAULT 10,
+    anim_trigger VARCHAR(50) DEFAULT NULL,
+    description TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 5. Items & Equipment
+CREATE TABLE IF NOT EXISTS items (
+    item_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    item_type VARCHAR(50) NOT NULL,
+    slot VARCHAR(50) NOT NULL,
+    power_bonus INT NOT NULL DEFAULT 0,
+    defense_bonus INT NOT NULL DEFAULT 0,
+    description TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 6. Creatures & Mobs
+CREATE TABLE IF NOT EXISTS creatures (
+    creature_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    rank INT NOT NULL DEFAULT 1,
+    max_hp INT NOT NULL DEFAULT 30,
+    attack_power INT NOT NULL DEFAULT 5,
+    defense INT NOT NULL DEFAULT 2,
+    room_id VARCHAR(100) NOT NULL,
+    respawn_sec INT NOT NULL DEFAULT 30,
+    xp_reward INT NOT NULL DEFAULT 20,
+    loot_kronars INT NOT NULL DEFAULT 5
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 7. Player Characters (Persistent Saves)
+CREATE TABLE IF NOT EXISTS players (
+    name VARCHAR(50) PRIMARY KEY,
+    guild_id VARCHAR(50) NOT NULL,
+    rank INT NOT NULL DEFAULT 1,
+    xp INT NOT NULL DEFAULT 0,
+    hp INT NOT NULL DEFAULT 100,
+    max_hp INT NOT NULL DEFAULT 100,
+    resource INT NOT NULL DEFAULT 100,
+    max_resource INT NOT NULL DEFAULT 100,
+    kronars INT NOT NULL DEFAULT 50,
+    room_id VARCHAR(100) NOT NULL DEFAULT 'crossroads_plaza',
+    inventory_json JSON DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 8. Player Skill Progression (Tracks ranks per skill via Focus Absorption)
+CREATE TABLE IF NOT EXISTS player_skills (
+    player_name VARCHAR(50) NOT NULL,
+    skill_id VARCHAR(50) NOT NULL,
+    skill_rank INT NOT NULL DEFAULT 1,
+    absorption_pool INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (player_name, skill_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ============================================================================
+-- PART 2: WORLD & CLASS SEED DATA
+-- ============================================================================
 
 -- ----------------------------------------------------------------------------
 -- 1. GUILDS / CLASSES (7 Classes)
@@ -17,10 +123,10 @@ INSERT INTO guilds (guild_id, name, resource_type, base_hp, base_resource, start
 ('ranger', 'Ranger', 'Focus', 115, 95, 'whispering_canopy_lodge', 0.00, 'Master trackers and wilderness scouts who command loyal animal companions and lethal ambushes.'),
 ('paladin', 'Paladin', 'Zeal', 130, 85, 'bastion_chapel', 0.00, 'Oath-bound champions clad in heavy plate who project protective auras and deliver radiant judgment.'),
 ('thief', 'Thief', 'Guile', 95, 100, 'shadow_alley_den', 0.00, 'Elusive operatives skilled in stealth, vital strikes, alchemy-laced blades, and trap disarming.')
-ON DUPLICATE KEY UPDATE name=VALUES(name);
+ON DUPLICATE KEY UPDATE name=VALUES(name), resource_type=VALUES(resource_type), base_hp=VALUES(base_hp), base_resource=VALUES(base_resource), starting_room_id=VALUES(starting_room_id), lifesteal_pct=VALUES(lifesteal_pct), description=VALUES(description);
 
 -- ----------------------------------------------------------------------------
--- 2. UNIVERSAL SKILLS
+-- 2. UNIVERSAL SKILLS (16 Skills)
 -- ----------------------------------------------------------------------------
 INSERT INTO skills (skill_id, name, category, description) VALUES
 ('arcane_lore', 'Arcane Lore', 'Magic', 'Governs raw magical potency and chaos manipulation.'),
@@ -39,7 +145,7 @@ INSERT INTO skills (skill_id, name, category, description) VALUES
 ('stealth', 'Stealth', 'Subterfuge', 'Moving unseen through shadows and dense terrain.'),
 ('perception', 'Perception', 'Survival', 'Spotting hidden foes, traps, and rare forageables.'),
 ('foraging', 'Foraging', 'Survival', 'Harvesting herbs, reagents, and pelts from the wild.')
-ON DUPLICATE KEY UPDATE name=VALUES(name);
+ON DUPLICATE KEY UPDATE name=VALUES(name), category=VALUES(category), description=VALUES(description);
 
 -- ----------------------------------------------------------------------------
 -- 3. ZONES & ROOMS (Central Hub, 7 Guild Sanctuaries, Whispering Fen)
@@ -99,7 +205,7 @@ INSERT INTO rooms (room_id, zone_name, title, description, exits_json, ambient_a
  'Half-submerged flagstones of pale limestone form a treacherous path through the black waters of the bog. Faint marsh-gas wisps flicker just beneath the murky surface, casting an eerie pale green glow across the slick stone.',
  '{"north": "whispering_fen_verge"}',
  'swamp_mist')
-ON DUPLICATE KEY UPDATE title=VALUES(title);
+ON DUPLICATE KEY UPDATE zone_name=VALUES(zone_name), title=VALUES(title), description=VALUES(description), exits_json=VALUES(exits_json), ambient_anim=VALUES(ambient_anim);
 
 -- ----------------------------------------------------------------------------
 -- 4. RANK 1 ABILITIES & PET SUMMONS (All 7 Classes)
@@ -138,7 +244,7 @@ INSERT INTO abilities (ability_id, name, guild_id, rank_required, resource_cost,
 ('viper_ambush', 'Viper Ambush', 'thief', 1, 12, 3, 'light_blades', 'damage', 21, 'viper_ambush', 'Strikes swiftly from the shadows for high critical precision.'),
 ('smoke_screen', 'Smoke Screen', 'thief', 1, 10, 2, 'stealth', 'buff_evasion', 20, 'smoke_screen', 'Shatters an alchemical capsule, blanketing the area in concealing smoke.'),
 ('venom_coat', 'Venom Coat', 'thief', 1, 12, 2, 'light_blades', 'buff_damage', 14, 'venom_coat', 'Applies a stinging marsh-toxin to your blade for extra damage.')
-ON DUPLICATE KEY UPDATE name=VALUES(name);
+ON DUPLICATE KEY UPDATE name=VALUES(name), guild_id=VALUES(guild_id), rank_required=VALUES(rank_required), resource_cost=VALUES(resource_cost), recovery_sec=VALUES(recovery_sec), skill_id=VALUES(skill_id), effect_type=VALUES(effect_type), base_power=VALUES(base_power), anim_trigger=VALUES(anim_trigger), description=VALUES(description);
 
 -- ----------------------------------------------------------------------------
 -- 5. STARTER ITEMS & EQUIPMENT
@@ -155,8 +261,11 @@ INSERT INTO items (item_id, name, item_type, slot, power_bonus, defense_bonus, d
 ('scaled_hauberk', 'a scorched scale hauberk', 'armor', 'chest', 0, 5, 'Overlapping iron scales treated against heat and frost.'),
 ('studded_hide', 'boiled leather and wolf-pelt armor', 'armor', 'chest', 0, 4, 'Supple hide armor reinforced with bronze studs.'),
 ('steel_breastplate', 'a polished steel breastplate', 'armor', 'chest', 0, 7, 'Heavy plate armor bearing an embossed sunburst.'),
-('shadow_jerkin', 'a charcoal-dyed leather jerkin', 'armor', 'chest', 0, 3, 'Silent, close-fitting leather designed for unrestricted movement.')
-ON DUPLICATE KEY UPDATE name=VALUES(name);
+('shadow_jerkin', 'a charcoal-dyed leather jerkin', 'armor', 'chest', 0, 3, 'Silent, close-fitting leather designed for unrestricted movement.'),
+('iron-shod staff', 'Iron-Shod Staff', 'weapon', 'main_hand', 5, 1, 'A sturdy quarterstaff reinforced with cold-forged iron caps.'),
+('reinforced leather tunic', 'Reinforced Leather Tunic', 'armor', 'chest', 0, 4, 'Hardened leather plates riveted over a padded gambeson.'),
+('minor healing draught', 'Minor Healing Draught', 'consumable', 'belt', 25, 0, 'A small glass vial of crimson herbal tonic that restores 25 HP.')
+ON DUPLICATE KEY UPDATE name=VALUES(name), item_type=VALUES(item_type), slot=VALUES(slot), power_bonus=VALUES(power_bonus), defense_bonus=VALUES(defense_bonus), description=VALUES(description);
 
 -- ----------------------------------------------------------------------------
 -- 6. CREATURE & PET TEMPLATES
@@ -165,6 +274,6 @@ INSERT INTO creatures (creature_id, name, rank, max_hp, attack_power, defense, r
 ('juvenile_bog_rat', 'a juvenile bog rat', 1, 35, 6, 4, 'whispering_fen_verge', 25, 25, 8),
 ('bloated_marsh_toad', 'a bloated marsh toad', 1, 42, 7, 5, 'whispering_fen_verge', 30, 30, 10),
 ('fen_crawler', 'a spiny fen-crawler', 2, 60, 11, 8, 'whispering_fen_causeway', 35, 45, 18)
-ON DUPLICATE KEY UPDATE name=VALUES(name);
+ON DUPLICATE KEY UPDATE name=VALUES(name), rank=VALUES(rank), max_hp=VALUES(max_hp), attack_power=VALUES(attack_power), defense=VALUES(defense), room_id=VALUES(room_id), respawn_sec=VALUES(respawn_sec), xp_reward=VALUES(xp_reward), loot_kronars=VALUES(loot_kronars);
 
 SET FOREIGN_KEY_CHECKS = 1;
