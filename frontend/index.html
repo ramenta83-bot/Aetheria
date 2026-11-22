@@ -1,64 +1,71 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aetheria Web MUD</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131d">
+  <title>Aetheria — Web MUD</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="mud-shell">
-    <header class="mud-header">
-      <div class="brand-title">AETHERIA // REAL-TIME MULTIPLAYER MUD</div>
-      <div id="conn-status" class="conn-badge disconnected">DISCONNECTED</div>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">A REALM OF MIST & MAGIC</p>
+        <h1>Aetheria</h1>
+      </div>
+      <div id="connection" class="connection disconnected" role="status">● DISCONNECTED</div>
     </header>
 
-    <section class="vitals-bar" aria-label="Character Vitals">
-      <div class="vital-item">
-        <span class="vital-label">CLASS</span>
-        <span id="hud-class" class="vital-value">--</span>
-      </div>
-      <div class="vital-item">
-        <span class="vital-label">RANK</span>
-        <span id="hud-rank" class="vital-value">1</span>
-      </div>
-      <div class="vital-item">
-        <span class="vital-label">HP</span>
-        <span id="hud-hp" class="vital-value">100/100</span>
-      </div>
-      <div class="vital-item">
-        <span class="vital-label">RESOURCE</span>
-        <span id="hud-res" class="vital-value">100/100</span>
-      </div>
-      <div class="vital-item">
-        <span class="vital-label">KRONARS</span>
-        <span id="hud-gold" class="vital-value">50</span>
-      </div>
-      <div class="vital-item">
-        <span class="vital-label">RECOVERY</span>
-        <span id="hud-rt" class="vital-value ready">READY</span>
-      </div>
+    <section class="login panel" id="loginPanel">
+      <h2>Enter the realm</h2>
+      <p>Choose a character name to connect. This prototype does not yet have password-protected accounts.</p>
+      <form id="loginForm">
+        <label for="characterName">Character name</label>
+        <div class="login-row">
+          <input id="characterName" name="characterName" maxlength="20" autocomplete="nickname" required placeholder="e.g. Kaelen">
+          <button type="submit">Enter Aetheria</button>
+        </div>
+      </form>
     </section>
 
-    <section class="stage-container" aria-label="Visual ASCII Stages">
-      <pre id="ambient-stage" class="ambient-stage" aria-hidden="true"></pre>
-      <pre id="ascii-stage" class="ascii-stage" aria-hidden="true"></pre>
+    <section id="game" class="game-grid" hidden>
+      <aside class="panel stats">
+        <h2>Character</h2>
+        <dl>
+          <dt>Name</dt><dd id="statName">—</dd>
+          <dt>Guild</dt><dd id="statGuild">—</dd>
+          <dt>Rank</dt><dd id="statRank">1</dd>
+          <dt>Health</dt><dd><span id="statHp">100 / 100</span><div class="meter"><span id="hpBar"></span></div></dd>
+          <dt>Resource</dt><dd><span id="statResource">100 / 100</span><div class="meter resource"><span id="resourceBar"></span></div></dd>
+          <dt>Kronars</dt><dd id="statKronars">50</dd>
+        </dl>
+        <p class="small">Commands: <code>help</code>, <code>look</code>, directions, <code>guild</code>, <code>strike</code>, <code>summon</code>, <code>attune</code>, <code>unleash</code>, <code>train</code>, <code>shop</code>, <code>buy</code>, <code>say</code>.</p>
+      </aside>
+
+      <section class="main-column">
+        <div class="panel location">
+          <p class="eyebrow">CURRENT LOCATION</p>
+          <h2 id="roomTitle">The Whispering Fen</h2>
+          <p id="roomDescription">Waiting for the world...</p>
+          <pre id="ambient" aria-live="off"></pre>
+          <pre id="animation" aria-live="polite"></pre>
+          <p id="entities" class="entities"></p>
+          <p class="exits">Exits: <span id="roomExits">—</span></p>
+        </div>
+        <div class="panel log-panel">
+          <h2>Chronicle</h2>
+          <div id="log" class="log" role="log" aria-live="polite"></div>
+          <form id="commandForm" class="command-row">
+            <label class="sr-only" for="command">Enter a command</label>
+            <input id="command" autocomplete="off" placeholder="What do you do?" maxlength="300">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </section>
     </section>
-
-    <main id="terminal-output" class="terminal-output" role="log" aria-live="polite"></main>
-
-    <form id="command-form" class="command-bar" autocomplete="off">
-      <span class="prompt-glyph">&gt;</span>
-      <input
-        id="command-input"
-        type="text"
-        placeholder="Enter command (e.g., look, north, attune chaos bolt, strike rat, train, shop)..."
-        autofocus
-      />
-      <button type="submit" class="send-btn">SEND</button>
-    </form>
-  </div>
-
+    <footer> Aetheria Web MUD · Prototype interface · Keep this tab open while playing </footer>
+  </main>
   <script src="animations.js"></script>
   <script src="client.js"></script>
 </body>

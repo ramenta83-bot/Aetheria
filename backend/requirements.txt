@@ -1,0 +1,3 @@
+# Python 3.10+; pin the WebSocket API range used by the guide.
+websockets>=14,<17
+mysql-connector-python>=8.0

@@ -1,129 +1,99 @@
-(function () {
-  const outputEl = document.getElementById("terminal-output");
-  const formEl = document.getElementById("command-form");
-  const inputEl = document.getElementById("command-input");
-  const statusEl = document.getElementById("conn-status");
-
-  const hudClass = document.getElementById("hud-class");
-  const hudRank = document.getElementById("hud-rank");
-  const hudHp = document.getElementById("hud-hp");
-  const hudRes = document.getElementById("hud-res");
-  const hudGold = document.getElementById("hud-gold");
-  const hudRt = document.getElementById("hud-rt");
-
-  const stagePlayer = typeof AsciiStagePlayer !== "undefined"
-    ? new AsciiStagePlayer("ascii-stage", "ambient-stage")
-    : null;
-
-  const isLocal = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
-  const wsUrl = isLocal
-    ? "ws://localhost:8765"
-    : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
-
+/* Browser client for the JSON message protocol in the supplied Aetheria server.py guide. */
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const connection = $("connection");
+  const loginPanel = $("loginPanel");
+  const game = $("game");
+  const loginForm = $("loginForm");
+  const commandForm = $("commandForm");
+  const logBox = $("log");
   let socket = null;
-  let recoveryInterval = null;
+  let character = "";
+  let stage = null;
 
-  function appendLine(text, className = "log-line") {
-    const div = document.createElement("div");
-    div.className = className;
-    div.textContent = text;
-    outputEl.appendChild(div);
-    outputEl.scrollTop = outputEl.scrollHeight;
+  function socketUrl() {
+    const local = ["localhost", "127.0.0.1"].includes(location.hostname);
+    if (local) return `ws://${location.hostname}:8765`;
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    return `${scheme}//${location.host}/ws`;
   }
-
-  function startRecoveryCountdown(seconds) {
-    clearInterval(recoveryInterval);
-    let remaining = Math.ceil(seconds);
-    if (remaining <= 0) {
-      hudRt.textContent = "READY";
-      hudRt.className = "vital-value ready";
+  function setConnection(ok, message) {
+    connection.textContent = ok ? "● CONNECTED" : "● DISCONNECTED";
+    connection.className = `connection ${ok ? "connected" : "disconnected"}`;
+    if (message) addLog(message, ok ? "system" : "error");
+  }
+  function addLog(message, style = "") {
+    const p = document.createElement("p");
+    if (["system", "combat", "error"].includes(style)) p.className = style;
+    p.textContent = String(message ?? "");
+    logBox.appendChild(p);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+  function sendCommand(command) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      addLog("Not connected. Refresh the page and try again.", "error");
       return;
     }
-    hudRt.textContent = `${remaining}s`;
-    hudRt.className = "vital-value locked";
-
-    recoveryInterval = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(recoveryInterval);
-        hudRt.textContent = "READY";
-        hudRt.className = "vital-value ready";
-      } else {
-        hudRt.textContent = `${remaining}s`;
-      }
-    }, 1000);
+    socket.send(JSON.stringify({ command }));
   }
-
   function updateVitals(data) {
-    if (data.guild) hudClass.textContent = data.guild.toUpperCase();
-    if (data.rank !== undefined) hudRank.textContent = data.rank;
-    if (data.hp !== undefined && data.max_hp !== undefined) {
-      hudHp.textContent = `${data.hp}/${data.max_hp}`;
-    }
-    if (data.resource !== undefined && data.max_resource !== undefined) {
-      hudRes.textContent = `${data.resource}/${data.max_resource}`;
-    }
-    if (data.kronars !== undefined) hudGold.textContent = data.kronars;
-    if (data.recovery !== undefined) startRecoveryCountdown(data.recovery);
+    $("statName").textContent = character || "—";
+    $("statGuild").textContent = data.guild ?? "—";
+    $("statRank").textContent = data.rank ?? "—";
+    const hp = Number(data.hp) || 0, maxHp = Math.max(1, Number(data.max_hp) || 1);
+    const resource = Number(data.resource) || 0, maxResource = Math.max(1, Number(data.max_resource) || 1);
+    $("statHp").textContent = `${hp} / ${maxHp}`;
+    $("hpBar").style.width = `${Math.max(0, Math.min(100, hp / maxHp * 100))}%`;
+    $("statResource").textContent = `${resource} / ${maxResource}`;
+    $("resourceBar").style.width = `${Math.max(0, Math.min(100, resource / maxResource * 100))}%`;
+    $("statKronars").textContent = data.kronars ?? 0;
   }
-
-  function connect() {
-    appendLine("Connecting to Aetheria Web MUD server...", "log-system");
-    socket = new WebSocket(wsUrl);
-
+  function handleMessage(raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch { addLog(raw); return; }
+    switch (data.type) {
+      case "text": addLog(data.text, data.style); break;
+      case "vitals": updateVitals(data); break;
+      case "room":
+        $("roomTitle").textContent = data.title || "Unknown location";
+        $("roomDescription").textContent = data.description || "";
+        $("entities").textContent = data.entities || "";
+        $("roomExits").textContent = data.exits || "none";
+        if (stage) stage.startAmbient(data.ambient || "marsh");
+        break;
+      case "anim": if (stage) stage.play(data.effect, data.speed); break;
+      default: addLog(`Unrecognized server message: ${raw}`);
+    }
+  }
+  function connect(name) {
+    character = name.trim().slice(0, 20);
+    if (!character) return;
+    try { socket = new WebSocket(socketUrl()); }
+    catch (err) { setConnection(false, `Could not create WebSocket: ${err.message}`); return; }
     socket.addEventListener("open", () => {
-      statusEl.textContent = "CONNECTED";
-      statusEl.className = "conn-badge connected";
-      appendLine("Connection established. Type a character name or 'help' to begin.", "log-system");
+      setConnection(true, "Connection established. Entering the realm…");
+      loginPanel.hidden = true;
+      game.hidden = false;
+      stage = new AsciiStagePlayer("animation", "ambient");
+      sendCommand(character);
+      $("command").focus();
     });
-
-    socket.addEventListener("message", (event) => {
-      let payload;
-      try {
-        payload = JSON.parse(event.data);
-      } catch {
-        appendLine(event.data);
-        return;
-      }
-
-      if (payload.type === "text") {
-        const style = payload.style ? `log-line log-${payload.style}` : "log-line";
-        appendLine(payload.text, style);
-      } else if (payload.type === "room") {
-        appendLine(`
-[${payload.title}]`, "log-room-title");
-        appendLine(payload.description, "log-line");
-        if (payload.entities) appendLine(payload.entities, "log-line");
-        if (payload.exits) appendLine(`Obvious paths: ${payload.exits}`, "log-line");
-        if (payload.ambient && stagePlayer) {
-          stagePlayer.startAmbient(payload.ambient);
-        }
-      } else if (payload.type === "anim" && stagePlayer) {
-        stagePlayer.play(payload.effect, payload.speed || 110);
-      } else if (payload.type === "vitals") {
-        updateVitals(payload);
-      }
-    });
-
-    socket.addEventListener("close", () => {
-      statusEl.textContent = "DISCONNECTED";
-      statusEl.className = "conn-badge disconnected";
-      appendLine("Disconnected from server. Refresh the page to reconnect.", "log-system");
-    });
+    socket.addEventListener("message", (event) => handleMessage(event.data));
+    socket.addEventListener("error", () => setConnection(false, "WebSocket connection error."));
+    socket.addEventListener("close", () => setConnection(false, "Connection closed. Refresh to reconnect."));
   }
-
-  formEl.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const cmd = inputEl.value.trim();
-    if (!cmd) return;
-    appendLine(`> ${cmd}`, "log-echo");
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ command: cmd }));
-    } else {
-      appendLine("Not connected to server.", "log-system");
-    }
-    inputEl.value = "";
+  loginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    connect($("characterName").value);
   });
-
-  connect();
+  commandForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const field = $("command");
+    const command = field.value.trim();
+    if (!command) return;
+    addLog(`> ${command}`);
+    sendCommand(command);
+    field.value = "";
+    field.focus();
+  });
 })();
