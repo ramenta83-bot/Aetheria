@@ -1,1 +1,5 @@
+*.env
+.venv/
 /Private
+__pycache__/
+venv/

@@ -3,7 +3,7 @@
 Aetheria Web MUD Multiplayer Server (server.py)
 Features:
 - Real-time WebSocket multiplayer loop
-- Live MySQL/MariaDB persistence aligned with web_mud.players (auto-falls back to in-memory mode if DB is offline)
+- Live MySQL/MariaDB persistence aligned with aetheria_mud.players (auto-falls back to in-memory mode if DB is offline)
 - Full Vitals HUD & Recovery countdown synchronization with frontend/client.js
 - Original Lexicon: Ranks, Recovery timers, Attune / Unleash, Strike, Focus Absorption
 - All 7 Classes with Berserker Lifesteal & Battle Mage / Ranger Active Pet Combat Loops
@@ -25,10 +25,10 @@ except ImportError:
     MYSQL_AVAILABLE = False
 
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "aetheria",
-    "password": "Aetheriadb",
-    "database": "web_mud",
+    "host": os.environ.get("AETHERIA_DB_HOST", "127.0.0.1"),
+    "user": os.environ.get("AETHERIA_DB_USER", "aetheria"),
+    "password": os.environ.get("AETHERIA_DB_PASS", ""),
+    "database": os.environ.get("AETHERIA_DB_NAME", "aetheria_mud"),
 }
 
 
@@ -191,7 +191,7 @@ CONNECTED_PLAYERS = {}  # websocket -> player_dict
 
 
 # ============================================================================
-# DATABASE PERSISTENCE LAYER (Aligned with web_mud.players)
+# DATABASE PERSISTENCE LAYER (Aligned with aetheria_mud.players)
 # ============================================================================
 def get_db_connection():
     if not MYSQL_AVAILABLE:
@@ -758,7 +758,7 @@ async def client_handler(ws):
 async def main():
     asyncio.create_task(world_tick_loop())
     print("Aetheria MUD Server running on ws://0.0.0.0:8765 ...")
-    async with websockets.serve(client_handler, "0.0.0.0", 8765):
+    async with websockets.serve(client_handler, "127.0.0.1", 8765):
         await asyncio.Future()
 
 
