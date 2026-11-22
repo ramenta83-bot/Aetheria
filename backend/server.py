@@ -3,11 +3,11 @@
 Aetheria Web MUD Multiplayer Server (server.py)
 Features:
 - Real-time WebSocket multiplayer loop
-- Live MySQL persistence aligned with aetheria_mud.players (auto-falls back to in-memory mode if MySQL is offline)
+- Live MySQL/MariaDB persistence aligned with web_mud.players (auto-falls back to in-memory mode if DB is offline)
 - Full Vitals HUD & Recovery countdown synchronization with frontend/client.js
 - Original Lexicon: Ranks, Recovery timers, Attune / Unleash, Strike, Focus Absorption
 - All 7 Classes with Berserker Lifesteal & Battle Mage / Ranger Active Pet Combat Loops
-- Guild Sanctuary progression commands (train, shop, buy) & help command
+- Guild Sanctuary progression commands (train, shop, buy, use) & help command
 - Real-time ASCII Animation & Ambient stage triggers
 """
 
@@ -25,30 +25,52 @@ except ImportError:
     MYSQL_AVAILABLE = False
 
 DB_CONFIG = {
-    "host": os.environ.get("MUD_DB_HOST", "localhost"),
-    "user": os.environ.get("MUD_DB_USER", "root"),
-    "password": os.environ.get("MUD_DB_PASS", ""),
-    "database": os.environ.get("MUD_DB_NAME", "aetheria_mud"),
+    "host": "localhost",
+    "user": "aetheria",
+    "password": "Aetheriadb",
+    "database": "web_mud",
 }
+
 
 # ============================================================================
 # WORLD & CLASS DEFINITIONS (Mirrors seed_world.sql for zero-config startup)
 # ============================================================================
 GUILDS = {
-    "sorcerer": {"name": "Sorcerer", "resource": "Arcane", "hp": 80, "res": 120, "start": "astral_sanctum_hall", "lifesteal": 0.0,
-                 "abilities": ["chaos_bolt", "astral_veil", "entropy_shackle"]},
-    "battle_mage": {"name": "Battle Mage", "resource": "Elemental", "hp": 110, "res": 90, "start": "elemental_forge_court", "lifesteal": 0.0,
-                    "abilities": ["flame_arc", "summon_ember_hound", "frost_aegis"]},
-    "berserker": {"name": "Berserker", "resource": "Rage", "hp": 145, "res": 100, "start": "bloodstone_pit", "lifesteal": 0.25,
-                  "abilities": ["savage_cleave", "blood_howl"]},
-    "cleric": {"name": "Cleric", "resource": "Devotion", "hp": 100, "res": 110, "start": "sanctuary_nave", "lifesteal": 0.0,
-               "abilities": ["radiant_mend", "smite_blight", "sacred_ward"]},
-    "ranger": {"name": "Ranger", "resource": "Focus", "hp": 115, "res": 95, "start": "whispering_canopy_lodge", "lifesteal": 0.0,
-               "abilities": ["piercing_shot", "call_timber_wolf", "briar_snare"]},
-    "paladin": {"name": "Paladin", "resource": "Zeal", "hp": 130, "res": 85, "start": "bastion_chapel", "lifesteal": 0.0,
-                "abilities": ["sunfire_strike", "aura_of_resolve", "lay_hands"]},
-    "thief": {"name": "Thief", "resource": "Guile", "hp": 95, "res": 100, "start": "shadow_alley_den", "lifesteal": 0.0,
-              "abilities": ["viper_ambush", "smoke_screen", "venom_coat"]},
+    "sorcerer": {
+        "name": "Sorcerer", "resource": "Arcane", "hp": 80, "res": 120,
+        "start": "astral_sanctum_hall", "lifesteal": 0.0,
+        "abilities": ["chaos_bolt", "astral_veil", "entropy_shackle"],
+    },
+    "battle_mage": {
+        "name": "Battle Mage", "resource": "Elemental", "hp": 110, "res": 90,
+        "start": "elemental_forge_court", "lifesteal": 0.0,
+        "abilities": ["flame_arc", "summon_ember_hound", "frost_aegis"],
+    },
+    "berserker": {
+        "name": "Berserker", "resource": "Rage", "hp": 145, "res": 100,
+        "start": "bloodstone_pit", "lifesteal": 0.25,
+        "abilities": ["savage_cleave", "blood_howl"],
+    },
+    "cleric": {
+        "name": "Cleric", "resource": "Devotion", "hp": 100, "res": 110,
+        "start": "sanctuary_nave", "lifesteal": 0.0,
+        "abilities": ["radiant_mend", "smite_blight", "sacred_ward"],
+    },
+    "ranger": {
+        "name": "Ranger", "resource": "Focus", "hp": 115, "res": 95,
+        "start": "whispering_canopy_lodge", "lifesteal": 0.0,
+        "abilities": ["piercing_shot", "call_timber_wolf", "briar_snare"],
+    },
+    "paladin": {
+        "name": "Paladin", "resource": "Zeal", "hp": 130, "res": 85,
+        "start": "bastion_chapel", "lifesteal": 0.0,
+        "abilities": ["sunfire_strike", "aura_of_resolve", "lay_hands"],
+    },
+    "thief": {
+        "name": "Thief", "resource": "Guile", "hp": 95, "res": 100,
+        "start": "shadow_alley_den", "lifesteal": 0.0,
+        "abilities": ["viper_ambush", "smoke_screen", "venom_coat"],
+    },
 }
 
 GUILD_SANCTUARY_ROOMS = {g["start"] for g in GUILDS.values()}
@@ -86,9 +108,11 @@ ROOMS = {
     "crossroads_plaza": {
         "title": "Oakhaven, Crossroads Plaza",
         "desc": "Wide cobblestones worn smooth by generations of travelers radiate outward from a weathered marble fountain at the heart of town. Lanterns of wrought iron cast warm pools of amber light across timber-framed storefronts and guild banners.",
-        "exits": {"north": "bastion_chapel", "northeast": "sanctuary_nave", "east": "elemental_forge_court",
-                  "southeast": "shadow_alley_den", "south": "whispering_fen_verge", "southwest": "bloodstone_pit",
-                  "west": "whispering_canopy_lodge", "up": "astral_sanctum_hall"},
+        "exits": {
+            "north": "bastion_chapel", "northeast": "sanctuary_nave", "east": "elemental_forge_court",
+            "southeast": "shadow_alley_den", "south": "whispering_fen_verge", "southwest": "bloodstone_pit",
+            "west": "whispering_canopy_lodge", "up": "astral_sanctum_hall",
+        },
         "ambient": "town_lanterns",
     },
     "astral_sanctum_hall": {
@@ -167,7 +191,7 @@ CONNECTED_PLAYERS = {}  # websocket -> player_dict
 
 
 # ============================================================================
-# DATABASE PERSISTENCE LAYER (Aligned with aetheria_mud.players)
+# DATABASE PERSISTENCE LAYER (Aligned with web_mud.players)
 # ============================================================================
 def get_db_connection():
     if not MYSQL_AVAILABLE:
@@ -419,7 +443,7 @@ async def handle_creature_defeat(player: dict, target: dict):
 DIR_ALIASES = {
     "n": "north", "s": "south", "e": "east", "w": "west",
     "ne": "northeast", "nw": "northwest", "se": "southeast", "sw": "southwest",
-    "u": "up", "d": "down"
+    "u": "up", "d": "down",
 }
 
 
@@ -447,15 +471,11 @@ async def handle_command(player: dict, raw: str):
     if cmd == "help":
         await send_text(
             ws,
-            "=== AETHERIA COMMANDS ===
-"
-            "Movement: LOOK, NORTH (N), SOUTH (S), EAST (E), WEST (W), NE, NW, SE, SW, UP (U), DOWN (D)
-"
-            "Combat:   STRIKE [target], ATTUNE <ability>, UNLEASH [target], ABILITIES
-"
-            "Guild:    TRAIN (advance Rank in your guild sanctuary), SHOP, BUY <item>, USE <item>
-"
-            "Social:   STATUS, INVENTORY, SAY <message>, WHO",
+            "=== AETHERIA COMMANDS ===\n"
+            "Movement:  LOOK, NORTH (N), SOUTH (S), EAST (E), WEST (W), NE, NW, SE, SW, UP (U), DOWN (D)\n"
+            "Combat:    STRIKE [target], ATTUNE <ability>, UNLEASH [target], ABILITIES\n"
+            "Guild:     TRAIN (advance Rank in your guild sanctuary), SHOP, BUY <item>, USE <item>\n"
+            "Social:    STATUS, INVENTORY, SAY <message>, WHO",
             "system",
         )
         return
@@ -483,10 +503,8 @@ async def handle_command(player: dict, raw: str):
         pet_str = player["pet"]["name"] if player["pet"] else "None"
         await send_text(
             ws,
-            f"Name: {player['name']} | Guild: {g_info['name']} | Rank: {player['rank']}
-"
-            f"HP: {player['hp']}/{player['max_hp']} | {g_info['resource']}: {player['resource']}/{player['max_resource']} | Kronars: {player['kronars']}
-"
+            f"Name: {player['name']} | Guild: {g_info['name']} | Rank: {player['rank']}\n"
+            f"HP: {player['hp']}/{player['max_hp']} | {g_info['resource']}: {player['resource']}/{player['max_resource']} | Kronars: {player['kronars']}\n"
             f"Focus Pool: {player['focus_pool']}/{player['rank'] * 100} | Active Companion: {pet_str}",
             "system",
         )
@@ -510,9 +528,7 @@ async def handle_command(player: dict, raw: str):
 
     if cmd == "who":
         roster = [f"{p['name']} (Rank {p['rank']} {GUILDS[p['guild']]['name']})" for p in CONNECTED_PLAYERS.values()]
-        await send_text(ws, "Adventurers Online:
-  " + "
-  ".join(roster), "system")
+        await send_text(ws, "Adventurers Online:\n  " + "\n  ".join(roster), "system")
         return
 
     # Guild Sanctuary Progression Commands (Handbook Section 3)
@@ -538,14 +554,10 @@ async def handle_command(player: dict, raw: str):
     if cmd == "shop":
         await send_text(
             ws,
-            "Guild Quartermaster Stock:
-"
-            "  1. Iron-Shod Staff (40 Kronars)
-"
-            "  2. Reinforced Leather Tunic (45 Kronars)
-"
-            "  3. Minor Healing Draught (25 Kronars)
-"
+            "Guild Quartermaster Stock:\n"
+            "  1. Iron-Shod Staff (40 Kronars)\n"
+            "  2. Reinforced Leather Tunic (45 Kronars)\n"
+            "  3. Minor Healing Draught (25 Kronars)\n"
             "Type 'buy <item name>' to purchase.",
             "system",
         )
@@ -645,95 +657,107 @@ async def handle_command(player: dict, raw: str):
                 await send_text(ws, f"You unleash {ab['name']} into the empty air.", "system")
                 return
             target = next((f for f in foes if arg_str in f["name"].lower()), foes[0])
-            dmg = ab["power"] + random.randint(-3, 5) + player["buff_atk"]
+            dmg = ab["power"] + (player["rank"] * 2) + player["buff_atk"]
             target["hp"] -= dmg
+            msg = f"You unleash {ab['name']} at {target['name']} for {dmg} damage!"
             if etype == "damage_lifesteal":
-                healed = max(2, int(dmg * 0.25))
+                healed = max(1, int(dmg * 0.25))
                 player["hp"] = min(player["max_hp"], player["hp"] + healed)
-                await send_text(ws, f"Your {ab['name']} tears into {target['name']} for {dmg} damage, restoring {healed} HP!", "combat")
-                await send_vitals(player)
-            else:
-                await send_text(ws, f"Your {ab['name']} blasts {target['name']} for {dmg} damage!", "combat")
+                msg += f" (Siphoned +{healed} HP)"
+            await send_text(ws, msg, "combat")
+            await send_vitals(player)
             if target["hp"] <= 0:
                 await handle_creature_defeat(player, target)
 
         elif etype == "heal":
-            healed = ab["power"] + random.randint(0, 6)
+            healed = ab["power"] + (player["rank"] * 3)
             player["hp"] = min(player["max_hp"], player["hp"] + healed)
+            await send_text(ws, f"You channel {ab['name']} and restore {healed} HP! ({player['hp']}/{player['max_hp']})", "echo")
             await send_vitals(player)
-            await send_text(ws, f"{ab['name']} washes over you, restoring {healed} HP! ({player['hp']}/{player['max_hp']})", "echo")
 
-        elif etype == "buff_armor":
-            player["buff_def"] += 3
-            await send_text(ws, f"{ab['name']} fortifies your defenses (+3 Armor).", "echo")
+        elif etype == "summon_pet":
+            player["pet"] = {
+                "name": ab["pet_name"],
+                "power": ab["power"] + player["rank"],
+                "expires": now + 60.0,
+            }
+            await send_text(ws, f"You summon {ab['pet_name']} to fight by your side!", "echo")
 
-        elif etype == "buff_evasion":
-            player["buff_def"] += 4
-            await send_text(ws, f"{ab['name']} shrouds your form in shifting concealment (+4 Evasion).", "echo")
+        elif etype in ("buff_armor", "buff_evasion"):
+            player["buff_def"] += max(1, ab["power"] // 5)
+            await send_text(ws, f"{ab['name']} surrounds you, bolstering your defenses!", "echo")
 
         elif etype == "buff_damage":
-            player["buff_atk"] += 4
-            await send_text(ws, f"{ab['name']} empowers your strikes (+4 Attack Power).", "echo")
+            player["buff_atk"] += max(1, ab["power"] // 4)
+            await send_text(ws, f"{ab['name']} empowers your strikes with lethal force!", "echo")
 
         elif etype == "debuff_recovery":
             foes = [c for c in ACTIVE_CREATURES.get(player["room"], []) if c["hp"] > 0]
-            if foes:
-                target = foes[0]
-                target["stun_until"] = now + 8.0
-                await send_text(ws, f"{ab['name']} ensnares {target['name']}, locking it in Recovery for 8 seconds!", "combat")
+            if not foes:
+                await send_text(ws, f"You cast {ab['name']}, but there is no target to ensnare.", "system")
+                return
+            target = next((f for f in foes if arg_str in f["name"].lower()), foes[0])
+            target["stun_until"] = now + (ab["power"] * 2.0)
+            await send_text(ws, f"{ab['name']} binds {target['name']}, delaying its recovery!", "combat")
 
-        elif etype == "summon_pet":
-            player["pet"] = {"name": ab["pet_name"], "power": ab["power"], "expires": now + 90.0}
-            await send_text(ws, f"You summon {ab['pet_name']} to fight alongside you for 90 seconds!", "echo")
+        await save_player(player)
         return
 
-    await send_text(ws, "Unrecognized command. Type HELP for a list of commands.", "system")
+    await send_text(ws, "Unknown command. Type HELP for a list of commands.", "system")
 
 
 # ============================================================================
-# WEBSOCKET CONNECTION HANDLER
+# WEBSOCKET CONNECTION HANDLER & ENTRY POINT
 # ============================================================================
-async def client_handler(websocket):
+async def client_handler(ws):
     player = None
     try:
-        await send_text(websocket, "=== WELCOME TO AETHERIA ===\nEnter your character name:", "system")
-        raw_name = await websocket.recv()
-        char_name = json.loads(raw_name).get("command", "Traveler").strip()[:18] or "Traveler"
+        async for raw_msg in ws:
+            try:
+                data = json.loads(raw_msg)
+                cmd = data.get("command", "").strip()
+                guild_choice = data.get("guild", "sorcerer").strip().lower().replace(" ", "_")
+            except (json.JSONDecodeError, AttributeError):
+                cmd = str(raw_msg).strip()
+                guild_choice = "sorcerer"
 
-        await send_text(
-            websocket,
-            "Choose your Guild (sorcerer, battle_mage, berserker, cleric, ranger, paladin, thief):",
-            "system",
-        )
-        raw_guild = await websocket.recv()
-        guild_choice = json.loads(raw_guild).get("command", "sorcerer").strip().lower().replace(" ", "_")
-        if guild_choice not in GUILDS:
-            guild_choice = "sorcerer"
+            if not cmd:
+                continue
 
-        player = load_or_create_character(websocket, char_name, guild_choice)
-        CONNECTED_PLAYERS[websocket] = player
+            if player is None:
+                if cmd.lower() == "help":
+                    await send_text(ws, "Enter a character name first to enter Aetheria (or: <name> <guild>).", "system")
+                    continue
 
-        await send_text(websocket, f"Welcome, {player['name']} of the {GUILDS[player['guild']]['name']} Guild!", "echo")
-        await send_vitals(player)
-        await send_room(player)
-        await broadcast_room(player["room"], f"{player['name']} steps into the realm.", exclude_ws=websocket, style="system")
+                login_parts = cmd.split()
+                char_name = login_parts[0][:20].title()
+                if len(login_parts) > 1:
+                    chosen = "_".join(login_parts[1:]).lower()
+                    if chosen in GUILDS:
+                        guild_choice = chosen
 
-        async for message in websocket:
-            data = json.loads(message)
-            if "command" in data:
-                await handle_command(player, data["command"])
+                player = load_or_create_character(ws, char_name, guild_choice)
+                CONNECTED_PLAYERS[ws] = player
+
+                await send_text(ws, f"Welcome to Aetheria, {char_name} ({GUILDS[player['guild']]['name']})! Type HELP for commands.", "system")
+                await send_vitals(player)
+                await send_room(player)
+                await broadcast_room(player["room"], f"{char_name} materializes in the realm.", exclude_ws=ws, style="system")
+            else:
+                await handle_command(player, cmd)
+
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
-        if websocket in CONNECTED_PLAYERS:
-            departed = CONNECTED_PLAYERS.pop(websocket)
+        if ws in CONNECTED_PLAYERS:
+            departed = CONNECTED_PLAYERS.pop(ws)
             await save_player(departed)
-            await broadcast_room(departed["room"], f"{departed['name']} vanishes from the realm.", style="system")
+            await broadcast_room(departed["room"], f"{departed['name']} fades into the mist.", style="system")
 
 
 async def main():
     asyncio.create_task(world_tick_loop())
-    print("Aetheria Web MUD Server listening on ws://0.0.0.0:8765")
+    print("Aetheria MUD Server running on ws://0.0.0.0:8765 ...")
     async with websockets.serve(client_handler, "0.0.0.0", 8765):
         await asyncio.Future()
 
