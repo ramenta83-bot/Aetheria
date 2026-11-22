@@ -1,41 +1,24 @@
-# Aetheria: Real-Time Multiplayer Web MUD
+Aetheria Web MUD - Website Starter
+==================================
 
-A data-driven, browser-based Multi-User Dungeon (MUD) engine built with Python WebSockets, MySQL, and vanilla HTML5/CSS3/JavaScript featuring real-time ASCII animations and seven distinct playable classes.
+Contents:
+- frontend/index.html, style.css, client.js, animations.js
+- database/schema.sql, database/seed_world.sql
+- backend/requirements.txt
 
-## Playable Classes (7-Class Roster)
-* **Sorcerer:** Arcane & Chaos magic specialist utilizing `Attune` / `Unleash` mechanics.
-* **Battle Mage:** Hybrid elemental caster and combat pet summoner.
-* **Berserker:** Rage-fueled melee bruiser with physical damage lifesteal.
-* **Cleric:** Divine healer, ward weaver, and undead banisher.
-* **Ranger:** Wilderness tracker, trapper, and animal companion handler.
-* **Paladin:** Armored radiant warrior with protective party auras.
-* **Thief:** Stealth ambush specialist using poisons, evasion, and lockpicking.
+Quick local run:
+1. Put these folders into your Aetheria project root.
+2. Create/configure the aetheria_mud database using the SQL files.
+3. In backend/, create a venv and install requirements.txt.
+4. Configure DB_CONFIG in your existing backend/server.py.
+5. Start the Python WebSocket server on localhost:8765.
+6. In a second terminal: cd frontend && python -m http.server 8080
+7. Browse to http://localhost:8080.
 
-## Directory Structure
-```text
-aetheria-web-mud/
-├── database/
-│   ├── schema.sql          # Relational MySQL table definitions
-│   └── seed_world.sql      # 7 classes, 16 skills, rooms, abilities, and starter gear
-├── backend/
-│   ├── server.py           # Async Python WebSocket game loop, pet ticks, and MySQL sync
-│   └── requirements.txt    # Python dependencies (websockets, mysql-connector-python)
-├── frontend/
-│   ├── index.html          # Browser terminal shell & Vitals HUD
-│   ├── style.css           # External dark-mode monospace stylesheet
-│   ├── client.js           # WebSocket client, Recovery timer, and command parser
-│   └── animations.js       # Client-side multi-frame ASCII stage player
-└── deploy/
-    ├── web-mud.conf        # Nginx reverse proxy configuration for WSS
-    └── web-mud.service     # Linux systemd unit for 24/7 background hosting
-```
+The client expects the documented JSON protocol:
+- Browser sends {"command":"..."}; first command is the character name.
+- Server messages have type text, vitals, room, or anim.
+- For a public Nginx deployment, the server must be behind /ws and the browser page must use HTTPS/WSS.
 
-## Quick Local Setup
-1. **Import Database:** Open `phpMyAdmin`, create a database named `aetheria_mud`, and import `database/schema.sql` followed by `database/seed_world.sql`.
-2. **Start Backend:**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   python server.py
-   ```
-3. **Launch Client:** Open `frontend/index.html` in your browser (or serve via XAMPP/Apache) and log in with your character name.
+Important:
+This is a frontend starter based on the backend protocol printed in the supplied PDF. It does not include a replacement server.py. Verify that your current backend matches the protocol before public deployment. Character names are not authenticated in the supplied prototype.
