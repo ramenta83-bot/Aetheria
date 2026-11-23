@@ -2,8 +2,9 @@
 """
 Aetheria Web MUD Multiplayer Server (server.py)
 Features:
+- Account registration, login (bcrypt), and multi-character selection/creation
 - Real-time WebSocket multiplayer loop
-- Live MySQL/MariaDB persistence aligned with aetheria_mud.players (auto-falls back to in-memory mode if DB is offline)
+- Live MySQL/MariaDB persistence aligned with players & accounts tables
 - Full Vitals HUD & Recovery countdown synchronization with frontend/client.js
 - Original Lexicon: Ranks, Recovery timers, Attune / Unleash, Strike, Focus Absorption
 - All 7 Classes with Berserker Lifesteal & Battle Mage / Ranger Active Pet Combat Loops
@@ -16,6 +17,7 @@ import json
 import os
 import random
 import time
+import bcrypt
 import websockets
 
 try:
@@ -25,15 +27,15 @@ except ImportError:
     MYSQL_AVAILABLE = False
 
 DB_CONFIG = {
-    "host": os.environ.get("AETHERIA_DB_HOST", "127.0.0.1"),
-    "user": os.environ.get("AETHERIA_DB_USER", "aetheria"),
-    "password": os.environ.get("AETHERIA_DB_PASS", ""),
-    "database": os.environ.get("AETHERIA_DB_NAME", "aetheria_mud"),
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "user": os.environ.get("DB_USER", "aetheria"),
+    "password": os.environ.get("DB_PASS", "Aetheriadb"),
+    "database": os.environ.get("DB_NAME", "aetheria_mud"),
 }
 
 
 # ============================================================================
-# WORLD & CLASS DEFINITIONS (Mirrors seed_world.sql for zero-config startup)
+# WORLD & CLASS DEFINITIONS
 # ============================================================================
 GUILDS = {
     "sorcerer": {
@@ -113,67 +115,67 @@ ROOMS = {
             "southeast": "shadow_alley_den", "south": "whispering_fen_verge", "southwest": "bloodstone_pit",
             "west": "whispering_canopy_lodge", "up": "astral_sanctum_hall",
         },
-        "ambient": "town_lanterns",
+        "ambient": "sanctuary",
     },
     "astral_sanctum_hall": {
         "title": "The Sorcerer's Sanctum, Hall of Mirrors",
         "desc": "High vaulted ceilings of dark basalt soar overhead, inlaid with silver filigree tracing the paths of the three moons. Polished obsidian mirrors stand in a wide circle around a sunken marble dais.",
         "exits": {"east": "astral_sanctum_terrace", "down": "crossroads_plaza"},
-        "ambient": "astral_twinkle",
+        "ambient": "sanctuary",
     },
     "astral_sanctum_terrace": {
         "title": "The Sorcerer's Sanctum, Astral Terrace",
         "desc": "Open to the night sky, this wide flagstone balcony juts out from the tower's eastern wall, offering an unobstructed view of the heavens and the mist-shrouded marshlands below.",
         "exits": {"west": "astral_sanctum_hall"},
-        "ambient": "astral_twinkle",
+        "ambient": "sanctuary",
     },
     "elemental_forge_court": {
         "title": "The Elemental Conclave, Runed Courtyard",
         "desc": "Basalt pillars etched with glowing red and cerulean glyphs surround an open-air sparring yard paved with scorched granite.",
         "exits": {"west": "crossroads_plaza"},
-        "ambient": "forge_sparks",
+        "ambient": "sanctuary",
     },
     "bloodstone_pit": {
         "title": "The Bloodstone Arena, Hall of Scars",
         "desc": "Rough-hewn timber beams and iron-banded stone walls enclose a sunken sand pit stained dark from countless duels.",
         "exits": {"northeast": "crossroads_plaza"},
-        "ambient": "arena_dust",
+        "ambient": "sanctuary",
     },
     "sanctuary_nave": {
         "title": "Cathedral of Dawn, Sunlit Nave",
         "desc": "Sunlight streams through towering stained-glass lancets, painting vibrant mosaics across white limestone flagstones.",
         "exits": {"southwest": "crossroads_plaza"},
-        "ambient": "radiant_motes",
+        "ambient": "sanctuary",
     },
     "whispering_canopy_lodge": {
         "title": "Timberwatch, Whispering Canopy Lodge",
         "desc": "Built around the trunk of an ancient ironwood tree, this elevated timber hall smells of cedar resin, oiled leather, and damp pine needles.",
         "exits": {"east": "crossroads_plaza"},
-        "ambient": "forest_breeze",
+        "ambient": "sanctuary",
     },
     "bastion_chapel": {
         "title": "The Silver Bastion, Vigil Hall",
         "desc": "Polished shields bearing sunburst crests hang along thick granite walls lit by tall beeswax candles.",
         "exits": {"south": "crossroads_plaza"},
-        "ambient": "radiant_motes",
+        "ambient": "sanctuary",
     },
     "shadow_alley_den": {
         "title": "The Velvet Coin, Backroom Den",
         "desc": "Behind a false wine cask lies a low-ceilinged cellar thick with pipe smoke and whispered bargains.",
         "exits": {"northwest": "crossroads_plaza"},
-        "ambient": "candle_flicker",
+        "ambient": "sanctuary",
     },
     "whispering_fen_verge": {
         "title": "The Whispering Fen, Muddy Verge",
         "desc": "Solid cobblestones end abruptly at a squishy, peat-heavy bank where firm ground gives way to stagnant black waters. Stunted willow trees droop over the murky shallows.",
         "exits": {"north": "crossroads_plaza", "south": "whispering_fen_causeway"},
-        "ambient": "swamp_mist",
+        "ambient": "marsh",
     },
     "whispering_fen_causeway": {
         "title": "The Whispering Fen, Sunken Causeway",
         "desc": "Half-submerged flagstones of pale limestone form a treacherous path through the black waters of the bog. Faint marsh-gas wisps flicker beneath the surface.",
         "exits": {"north": "whispering_fen_verge"},
-        "ambient": "swamp_mist",
+        "ambient": "marsh",
     },
 }
 
@@ -187,76 +189,63 @@ ACTIVE_CREATURES = {
     ],
 }
 
-CONNECTED_PLAYERS = {}  # websocket -> player_dict
+CONNECTED_SESSIONS = {}  # websocket -> {"account_id": int|None, "username": str|None}
+CONNECTED_PLAYERS = {}   # websocket -> player_dict
 
 
 # ============================================================================
-# DATABASE PERSISTENCE LAYER (Aligned with aetheria_mud.players)
+# DATABASE PERSISTENCE & AUTH LAYER
 # ============================================================================
 def get_db_connection():
     if not MYSQL_AVAILABLE:
         return None
     try:
         return mysql.connector.connect(**DB_CONFIG)
-    except Exception:
+    except Exception as e:
+        print(f"[DB Connection Error] {e}")
         return None
 
 
-def load_or_create_character(ws, name: str, guild_key: str) -> dict:
-    guild = GUILDS.get(guild_key, GUILDS["sorcerer"])
+def fetch_account_characters(account_id: int) -> list:
     conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(dictionary=True)
-            cur.execute("SELECT * FROM players WHERE name = %s", (name,))
-            row = cur.fetchone()
-            if row:
-                cur.close()
-                conn.close()
-                inv = json.loads(row["inventory_json"]) if row.get("inventory_json") else []
-                return {
-                    "ws": ws,
-                    "name": row["name"],
-                    "guild": row["guild_id"],
-                    "rank": row["rank"],
-                    "hp": row["hp"],
-                    "max_hp": row["max_hp"],
-                    "resource": row["resource"],
-                    "max_resource": row["max_resource"],
-                    "room": row["room_id"],
-                    "kronars": row["kronars"],
-                    "focus_pool": row.get("xp", 0),
-                    "inventory": inv,
-                    "attuned": None,
-                    "recovery_until": 0.0,
-                    "buff_atk": 0,
-                    "buff_def": 0,
-                    "pet": None,
-                }
-            cur.execute(
-                """INSERT INTO players (name, guild_id, rank, xp, hp, max_hp, resource, max_resource, kronars, room_id, inventory_json)
-                   VALUES (%s, %s, 1, 0, %s, %s, %s, %s, 50, %s, %s)""",
-                (name, guild_key, guild["hp"], guild["hp"], guild["res"], guild["res"], guild["start"], json.dumps([])),
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
-        except Exception as e:
-            print(f"[DB Warning] Falling back to memory mode: {e}")
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """SELECT name, guild_id, `rank`, hp, max_hp, resource, max_resource, kronars, room_id
+               FROM players WHERE account_id = %s ORDER BY name ASC""",
+            (account_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        for r in rows:
+            g = GUILDS.get(r["guild_id"])
+            r["guild_name"] = g["name"] if g else r["guild_id"].title()
+        return rows
+    except Exception as e:
+        print(f"[DB Fetch Chars Error] {e}")
+        return []
 
+
+def hydrate_player_dict(ws, row: dict) -> dict:
+    inv = json.loads(row["inventory_json"]) if row.get("inventory_json") else []
+    guild_key = row["guild_id"] if row["guild_id"] in GUILDS else "sorcerer"
     return {
         "ws": ws,
-        "name": name,
+        "account_id": row["account_id"],
+        "name": row["name"],
         "guild": guild_key,
-        "rank": 1,
-        "hp": guild["hp"],
-        "max_hp": guild["hp"],
-        "resource": guild["res"],
-        "max_resource": guild["res"],
-        "room": guild["start"],
-        "kronars": 50,
-        "focus_pool": 0,
-        "inventory": [],
+        "rank": row["rank"],
+        "hp": row["hp"],
+        "max_hp": row["max_hp"],
+        "resource": row["resource"],
+        "max_resource": row["max_resource"],
+        "room": row["room_id"] if row["room_id"] in ROOMS else GUILDS[guild_key]["start"],
+        "kronars": row["kronars"],
+        "focus_pool": row.get("xp", 0),
+        "inventory": inv,
         "attuned": None,
         "recovery_until": 0.0,
         "buff_atk": 0,
@@ -273,9 +262,9 @@ async def save_player(player: dict):
         cur = conn.cursor()
         cur.execute(
             """UPDATE players
-               SET rank = %s, xp = %s, hp = %s, max_hp = %s, resource = %s, max_resource = %s,
+               SET `rank` = %s, xp = %s, hp = %s, max_hp = %s, resource = %s, max_resource = %s,
                    room_id = %s, kronars = %s, inventory_json = %s
-               WHERE name = %s""",
+               WHERE name = %s AND account_id = %s""",
             (
                 player["rank"],
                 player["focus_pool"],
@@ -287,6 +276,7 @@ async def save_player(player: dict):
                 player["kronars"],
                 json.dumps(player.get("inventory", [])),
                 player["name"],
+                player["account_id"],
             ),
         )
         conn.commit()
@@ -299,20 +289,25 @@ async def save_player(player: dict):
 # ============================================================================
 # MESSAGING, VITALS HUD & ROOM BROADCAST HELPERS
 # ============================================================================
+async def send_json(ws, payload: dict):
+    await ws.send(json.dumps(payload))
+
+
 async def send_text(ws, text: str, style: str = ""):
     payload = {"type": "text", "text": text}
     if style:
         payload["style"] = style
-    await ws.send(json.dumps(payload))
+    await send_json(ws, payload)
 
 
 async def send_anim(ws, effect: str, speed: int = 110):
-    await ws.send(json.dumps({"type": "anim", "effect": effect, "speed": speed}))
+    await send_json(ws, {"type": "anim", "effect": effect, "speed": speed})
 
 
 async def send_vitals(player: dict, recovery_sec: float = None):
     payload = {
         "type": "vitals",
+        "name": player["name"],
         "guild": GUILDS[player["guild"]]["name"],
         "rank": player["rank"],
         "hp": player["hp"],
@@ -323,7 +318,7 @@ async def send_vitals(player: dict, recovery_sec: float = None):
     }
     if recovery_sec is not None:
         payload["recovery"] = recovery_sec
-    await player["ws"].send(json.dumps(payload))
+    await send_json(player["ws"], payload)
 
 
 async def send_room(player: dict):
@@ -344,7 +339,7 @@ async def send_room(player: dict):
         "exits": exits_line,
         "ambient": room["ambient"],
     }
-    await player["ws"].send(json.dumps(payload))
+    await send_json(player["ws"], payload)
 
 
 async def broadcast_room(room_id: str, text: str, exclude_ws=None, anim: str = None, style: str = ""):
@@ -353,6 +348,134 @@ async def broadcast_room(room_id: str, text: str, exclude_ws=None, anim: str = N
             await send_text(ws, text, style=style)
             if anim:
                 await send_anim(ws, anim)
+
+
+# ============================================================================
+# AUTH & CHARACTER SELECTION HANDLER
+# ============================================================================
+async def handle_auth_action(ws, data: dict):
+    action = data.get("action")
+    session = CONNECTED_SESSIONS[ws]
+
+    if action == "register":
+        username = (data.get("username") or "").strip()
+        password = data.get("password") or ""
+        if len(username) < 3 or len(username) > 20 or not username.isalnum():
+            return await send_json(ws, {"type": "auth_error", "message": "Username must be 3-20 letters/numbers."})
+        if len(password) < 6:
+            return await send_json(ws, {"type": "auth_error", "message": "Password must be at least 6 characters."})
+
+        conn = get_db_connection()
+        if not conn:
+            return await send_json(ws, {"type": "auth_error", "message": "Database offline. Try again shortly."})
+
+        pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        try:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO accounts (username, password_hash) VALUES (%s, %s)", (username, pw_hash))
+            conn.commit()
+            session["account_id"] = cur.lastrowid
+            session["username"] = username
+            cur.close()
+            conn.close()
+            await send_json(ws, {"type": "auth_ok", "username": username, "characters": []})
+        except mysql.connector.IntegrityError:
+            await send_json(ws, {"type": "auth_error", "message": "That account username is already taken."})
+        except Exception as e:
+            await send_json(ws, {"type": "auth_error", "message": f"Registration error: {e}"})
+
+    elif action == "login":
+        username = (data.get("username") or "").strip()
+        password = (data.get("password") or "").encode("utf-8")
+
+        conn = get_db_connection()
+        if not conn:
+            return await send_json(ws, {"type": "auth_error", "message": "Database offline. Try again shortly."})
+
+        try:
+            cur = conn.cursor(dictionary=True)
+            cur.execute("SELECT id, username, password_hash FROM accounts WHERE username = %s", (username,))
+            acct = cur.fetchone()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            return await send_json(ws, {"type": "auth_error", "message": f"Login error: {e}"})
+
+        if not acct or not bcrypt.checkpw(password, acct["password_hash"].encode("utf-8")):
+            return await send_json(ws, {"type": "auth_error", "message": "Invalid username or password."})
+
+        session["account_id"] = acct["id"]
+        session["username"] = acct["username"]
+        chars = fetch_account_characters(acct["id"])
+        await send_json(ws, {"type": "auth_ok", "username": acct["username"], "characters": chars})
+
+    elif action == "create_character":
+        account_id = session.get("account_id")
+        if not account_id:
+            return await send_json(ws, {"type": "auth_error", "message": "You must log in first."})
+
+        char_name = (data.get("name") or "").strip()[:20].title()
+        guild_key = (data.get("guild") or "sorcerer").strip().lower().replace(" ", "_")
+        if guild_key not in GUILDS:
+            guild_key = "sorcerer"
+
+        if len(char_name) < 3 or not char_name.isalpha():
+            return await send_json(ws, {"type": "char_error", "message": "Character name must be 3-20 letters only."})
+
+        guild = GUILDS[guild_key]
+        conn = get_db_connection()
+        if not conn:
+            return await send_json(ws, {"type": "char_error", "message": "Database offline."})
+
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO players (account_id, name, guild_id, `rank`, xp, hp, max_hp, resource, max_resource, kronars, room_id, inventory_json)
+                   VALUES (%s, %s, %s, 1, 0, %s, %s, %s, %s, 50, %s, %s)""",
+                (account_id, char_name, guild_key, guild["hp"], guild["hp"], guild["res"], guild["res"], guild["start"], json.dumps([])),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            chars = fetch_account_characters(account_id)
+            await send_json(ws, {"type": "char_list", "characters": chars})
+        except mysql.connector.IntegrityError:
+            await send_json(ws, {"type": "char_error", "message": "That character name is already taken."})
+        except Exception as e:
+            await send_json(ws, {"type": "char_error", "message": f"Could not create character: {e}"})
+
+    elif action == "select_character":
+        account_id = session.get("account_id")
+        char_name = (data.get("name") or "").strip()
+        if not account_id or not char_name:
+            return await send_json(ws, {"type": "char_error", "message": "Invalid character selection."})
+
+        for existing_ws, existing_p in list(CONNECTED_PLAYERS.items()):
+            if existing_p["name"].lower() == char_name.lower() and existing_ws != ws:
+                await send_text(existing_ws, "You logged in from another window.", "error")
+                await existing_ws.close()
+
+        conn = get_db_connection()
+        if not conn:
+            return await send_json(ws, {"type": "char_error", "message": "Database offline."})
+
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT * FROM players WHERE name = %s AND account_id = %s", (char_name, account_id))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return await send_json(ws, {"type": "char_error", "message": "Character not found on your account."})
+
+        player = hydrate_player_dict(ws, row)
+        CONNECTED_PLAYERS[ws] = player
+
+        await send_json(ws, {"type": "enter_world", "character": player["name"]})
+        await send_text(ws, f"Welcome to Aetheria, {player['name']} ({GUILDS[player['guild']]['name']})! Type HELP for commands.", "system")
+        await send_vitals(player)
+        await send_room(player)
+        await broadcast_room(player["room"], f"{player['name']} materializes in the realm.", exclude_ws=ws, style="system")
 
 
 # ============================================================================
@@ -366,7 +489,6 @@ async def world_tick_loop():
         for ws, p in list(CONNECTED_PLAYERS.items()):
             vitals_changed = False
 
-            # Passive regeneration
             if p["hp"] < p["max_hp"]:
                 p["hp"] = min(p["max_hp"], p["hp"] + 2)
                 vitals_changed = True
@@ -374,7 +496,6 @@ async def world_tick_loop():
                 p["resource"] = min(p["max_resource"], p["resource"] + 3)
                 vitals_changed = True
 
-            # Active Pet Combat Loop (Battle Mage & Ranger)
             if p["pet"]:
                 if now >= p["pet"]["expires"]:
                     pet_name = p["pet"]["name"]
@@ -387,7 +508,7 @@ async def world_tick_loop():
                         dmg = random.randint(max(2, p["pet"]["power"] - 3), p["pet"]["power"] + 4)
                         target["hp"] -= dmg
                         await send_text(ws, f"Your {p['pet']['name']} lunges at {target['name']} for {dmg} damage!", "combat")
-                        await send_anim(ws, "pet_bite")
+                        await send_anim(ws, "companion")
                         if target["hp"] <= 0:
                             await handle_creature_defeat(p, target)
 
@@ -397,7 +518,6 @@ async def world_tick_loop():
                 except Exception:
                     pass
 
-        # Creature Counterattack & Respawn Loop
         for room_id, foes in ACTIVE_CREATURES.items():
             players_here = [(w, pl) for w, pl in CONNECTED_PLAYERS.items() if pl["room"] == room_id]
             for foe in foes:
@@ -420,7 +540,7 @@ async def handle_creature_defeat(player: dict, target: dict):
     target["respawn_at"] = time.time() + 25
     player["kronars"] += target["kronars"]
     player["focus_pool"] += target["xp"]
-    await send_text(ws, f"{target['name'].capitalize()} collapses! You gather {target['kronars']} Kronars and absorb {target['xp']} Focus.", "echo")
+    await send_text(ws, f"{target['name'].capitalize()} collapses! You gather {target['kronars']} Kronars and absorb {target['xp']} Focus.", "system")
     await send_anim(ws, "victory_spark")
 
     needed = player["rank"] * 100
@@ -431,7 +551,7 @@ async def handle_creature_defeat(player: dict, target: dict):
         player["max_resource"] += 10
         player["hp"] = player["max_hp"]
         player["resource"] = player["max_resource"]
-        await send_text(ws, f"*** FOCUS ABSORPTION COMPLETE! You ascend to Rank {player['rank']}! ***", "echo")
+        await send_text(ws, f"*** FOCUS ABSORPTION COMPLETE! You ascend to Rank {player['rank']}! ***", "system")
 
     await send_vitals(player)
     await save_player(player)
@@ -458,7 +578,6 @@ async def handle_command(player: dict, raw: str):
     args = parts[1:]
     arg_str = " ".join(args).lower()
 
-    # Check Recovery Timer (blocks combat & movement)
     now = time.time()
     if cmd in ("north", "south", "east", "west", "northeast", "northwest", "southeast", "southwest", "up", "down",
                "n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d", "strike", "unleash"):
@@ -467,7 +586,6 @@ async def handle_command(player: dict, raw: str):
             await send_text(ws, f"...wait {rem} seconds (Recovery).", "system")
             return
 
-    # Help Command
     if cmd == "help":
         await send_text(
             ws,
@@ -475,12 +593,19 @@ async def handle_command(player: dict, raw: str):
             "Movement:  LOOK, NORTH (N), SOUTH (S), EAST (E), WEST (W), NE, NW, SE, SW, UP (U), DOWN (D)\n"
             "Combat:    STRIKE [target], ATTUNE <ability>, UNLEASH [target], ABILITIES\n"
             "Guild:     TRAIN (advance Rank in your guild sanctuary), SHOP, BUY <item>, USE <item>\n"
-            "Social:    STATUS, INVENTORY, SAY <message>, WHO",
+            "Social:    STATUS, INVENTORY, SAY <message>, WHO, LOGOUT",
             "system",
         )
         return
 
-    # Movement
+    if cmd == "logout":
+        await save_player(player)
+        CONNECTED_PLAYERS.pop(ws, None)
+        await broadcast_room(player["room"], f"{player['name']} fades into the mist.", style="system")
+        chars = fetch_account_characters(player["account_id"])
+        await send_json(ws, {"type": "char_select", "characters": chars})
+        return
+
     direction = DIR_ALIASES.get(cmd, cmd)
     if direction in ROOMS[player["room"]]["exits"]:
         old_room = player["room"]
@@ -531,7 +656,6 @@ async def handle_command(player: dict, raw: str):
         await send_text(ws, "Adventurers Online:\n  " + "\n  ".join(roster), "system")
         return
 
-    # Guild Sanctuary Progression Commands (Handbook Section 3)
     if cmd == "train":
         if player["room"] not in GUILD_SANCTUARY_ROOMS:
             await send_text(ws, "You must visit a Guild Sanctuary to train your Rank.", "system")
@@ -548,7 +672,7 @@ async def handle_command(player: dict, raw: str):
         player["resource"] = player["max_resource"]
         await save_player(player)
         await send_vitals(player)
-        await send_text(ws, f"You complete rigorous guild drills and advance to Rank {player['rank']}!", "echo")
+        await send_text(ws, f"You complete rigorous guild drills and advance to Rank {player['rank']}!", "system")
         return
 
     if cmd == "shop":
@@ -578,7 +702,7 @@ async def handle_command(player: dict, raw: str):
         player["buff_def"] += item_info["def_bonus"]
         await save_player(player)
         await send_vitals(player)
-        await send_text(ws, f"You purchase {arg_str} for {price} Kronars.", "echo")
+        await send_text(ws, f"You purchase {arg_str} for {price} Kronars.", "system")
         return
 
     if cmd == "use":
@@ -590,12 +714,11 @@ async def handle_command(player: dict, raw: str):
             player["hp"] = min(player["max_hp"], player["hp"] + 35)
             await send_vitals(player)
             await save_player(player)
-            await send_text(ws, f"You drink the minor healing draught and recover 35 HP! ({player['hp']}/{player['max_hp']})", "echo")
+            await send_text(ws, f"You drink the minor healing draught and recover 35 HP! ({player['hp']}/{player['max_hp']})", "system")
         else:
             await send_text(ws, f"Your {arg_str} is already equipped passively.", "system")
         return
 
-    # Melee Attack: STRIKE <target>
     if cmd == "strike":
         foes = [c for c in ACTIVE_CREATURES.get(player["room"], []) if c["hp"] > 0]
         if not foes:
@@ -621,7 +744,6 @@ async def handle_command(player: dict, raw: str):
             await handle_creature_defeat(player, target)
         return
 
-    # Attune Ability: ATTUNE <ability name>
     if cmd == "attune":
         guild_abs = GUILDS[player["guild"]]["abilities"]
         match = next((a for a in guild_abs if arg_str and (arg_str in a.replace("_", " ") or arg_str in ABILITIES[a]["name"].lower())), None)
@@ -632,7 +754,6 @@ async def handle_command(player: dict, raw: str):
         await send_text(ws, f"You begin attuning your energy to {ABILITIES[match]['name']}...", "system")
         return
 
-    # Unleash Ability: UNLEASH [target]
     if cmd == "unleash":
         if not player["attuned"]:
             await send_text(ws, "You have not attuned an ability yet. Use ATTUNE <ability> first.", "system")
@@ -672,7 +793,7 @@ async def handle_command(player: dict, raw: str):
         elif etype == "heal":
             healed = ab["power"] + (player["rank"] * 3)
             player["hp"] = min(player["max_hp"], player["hp"] + healed)
-            await send_text(ws, f"You channel {ab['name']} and restore {healed} HP! ({player['hp']}/{player['max_hp']})", "echo")
+            await send_text(ws, f"You channel {ab['name']} and restore {healed} HP! ({player['hp']}/{player['max_hp']})", "system")
             await send_vitals(player)
 
         elif etype == "summon_pet":
@@ -681,15 +802,15 @@ async def handle_command(player: dict, raw: str):
                 "power": ab["power"] + player["rank"],
                 "expires": now + 60.0,
             }
-            await send_text(ws, f"You summon {ab['pet_name']} to fight by your side!", "echo")
+            await send_text(ws, f"You summon {ab['pet_name']} to fight by your side!", "system")
 
         elif etype in ("buff_armor", "buff_evasion"):
             player["buff_def"] += max(1, ab["power"] // 5)
-            await send_text(ws, f"{ab['name']} surrounds you, bolstering your defenses!", "echo")
+            await send_text(ws, f"{ab['name']} surrounds you, bolstering your defenses!", "system")
 
         elif etype == "buff_damage":
             player["buff_atk"] += max(1, ab["power"] // 4)
-            await send_text(ws, f"{ab['name']} empowers your strikes with lethal force!", "echo")
+            await send_text(ws, f"{ab['name']} empowers your strikes with lethal force!", "system")
 
         elif etype == "debuff_recovery":
             foes = [c for c in ACTIVE_CREATURES.get(player["room"], []) if c["hp"] > 0]
@@ -710,45 +831,27 @@ async def handle_command(player: dict, raw: str):
 # WEBSOCKET CONNECTION HANDLER & ENTRY POINT
 # ============================================================================
 async def client_handler(ws):
-    player = None
+    CONNECTED_SESSIONS[ws] = {"account_id": None, "username": None}
     try:
         async for raw_msg in ws:
             try:
                 data = json.loads(raw_msg)
-                cmd = data.get("command", "").strip()
-                guild_choice = data.get("guild", "sorcerer").strip().lower().replace(" ", "_")
-            except (json.JSONDecodeError, AttributeError):
-                cmd = str(raw_msg).strip()
-                guild_choice = "sorcerer"
-
-            if not cmd:
+            except json.JSONDecodeError:
                 continue
 
-            if player is None:
-                if cmd.lower() == "help":
-                    await send_text(ws, "Enter a character name first to enter Aetheria (or: <name> <guild>).", "system")
-                    continue
-
-                login_parts = cmd.split()
-                char_name = login_parts[0][:20].title()
-                if len(login_parts) > 1:
-                    chosen = "_".join(login_parts[1:]).lower()
-                    if chosen in GUILDS:
-                        guild_choice = chosen
-
-                player = load_or_create_character(ws, char_name, guild_choice)
-                CONNECTED_PLAYERS[ws] = player
-
-                await send_text(ws, f"Welcome to Aetheria, {char_name} ({GUILDS[player['guild']]['name']})! Type HELP for commands.", "system")
-                await send_vitals(player)
-                await send_room(player)
-                await broadcast_room(player["room"], f"{char_name} materializes in the realm.", exclude_ws=ws, style="system")
-            else:
-                await handle_command(player, cmd)
+            if "action" in data:
+                await handle_auth_action(ws, data)
+            elif "command" in data:
+                player = CONNECTED_PLAYERS.get(ws)
+                if not player:
+                    await send_json(ws, {"type": "auth_error", "message": "Please log in and select a character first."})
+                else:
+                    await handle_command(player, data["command"])
 
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
+        CONNECTED_SESSIONS.pop(ws, None)
         if ws in CONNECTED_PLAYERS:
             departed = CONNECTED_PLAYERS.pop(ws)
             await save_player(departed)
@@ -758,7 +861,7 @@ async def client_handler(ws):
 async def main():
     asyncio.create_task(world_tick_loop())
     print("Aetheria MUD Server running on ws://0.0.0.0:8765 ...")
-    async with websockets.serve(client_handler, "127.0.0.1", 8765):
+    async with websockets.serve(client_handler, "0.0.0.0", 8765):
         await asyncio.Future()
 
 
