@@ -7,79 +7,112 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <p class="subtitle">A REALM OF MIST &amp; MAGIC</p>
-    <h1>Aetheria</h1>
-    <div id="status-bar"><span id="status-dot">●</span> <span id="status-text">DISCONNECTED</span></div>
-  </header>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">A REALM OF MIST &amp; MAGIC</p>
+        <h1>Aetheria</h1>
+      </div>
+      <div id="connection" class="connection disconnected">● DISCONNECTED</div>
+    </header>
 
-  <!-- 1. ACCOUNT LOGIN / REGISTER -->
-  <section id="auth-panel" class="card">
-    <div class="tabs">
-      <button id="tab-login" class="tab active" type="button">Log In</button>
-      <button id="tab-register" class="tab" type="button">Create Account</button>
-    </div>
+    <section id="authPanel" class="panel login">
+      <div class="auth-tabs">
+        <button id="tabLogin" class="tab-btn active" type="button">Log In</button>
+        <button id="tabRegister" class="tab-btn" type="button">Create Account</button>
+      </div>
 
-    <form id="auth-form">
-      <label for="auth-user">Account Username</label>
-      <input id="auth-user" type="text" autocomplete="username" required />
+      <form id="authForm">
+        <label for="authUsername">Account Username</label>
+        <input id="authUsername" type="text" autocomplete="username" placeholder="3–20 letters or numbers" required />
 
-      <label for="auth-pass">Password</label>
-      <input id="auth-pass" type="password" autocomplete="current-password" required />
+        <label for="authPassword">Password</label>
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters" required />
 
-      <p id="auth-error" class="error-text"></p>
-      <button id="auth-submit" type="submit">Log In</button>
-    </form>
-  </section>
-
-  <!-- 2. CHARACTER SELECT & CREATION -->
-  <section id="char-select-panel" class="card hidden">
-    <h2>Choose Your Character</h2>
-    <p class="muted">Logged in as <strong id="logged-in-user">—</strong></p>
-
-    <div id="char-list" class="char-list"></div>
-
-    <hr />
-    <h3>Create New Character</h3>
-    <form id="create-char-form" class="inline-form">
-      <input id="new-char-name" type="text" placeholder="Character name (3–16 letters)" required />
-      <button type="submit">Create</button>
-    </form>
-    <p id="char-error" class="error-text"></p>
-  </section>
-
-  <!-- 3. ACTIVE GAME WORLD -->
-  <main id="game-panel" class="hidden">
-    <aside class="card">
-      <h2>Character</h2>
-      <ul class="stats">
-        <li><span>Name</span> <strong id="hud-name">—</strong></li>
-        <li><span>Guild</span> <strong id="hud-guild">—</strong></li>
-        <li><span>Rank</span> <strong id="hud-rank">1</strong></li>
-        <li><span>Health</span> <strong id="hud-hp">100 / 100</strong></li>
-        <li><span>Resource</span> <strong id="hud-res">100 / 100</strong></li>
-        <li><span>Kronars</span> <strong id="hud-kronars">50</strong></li>
-      </ul>
-      <p class="commands-hint">Commands: help, look, directions, guild, strike, summon, attune, unleash, train, shop, buy, say.</p>
-    </aside>
-
-    <section class="card">
-      <p class="eyebrow">CURRENT LOCATION</p>
-      <h2 id="room-name">Crossroads Plaza</h2>
-      <p id="room-desc">Waiting for the world...</p>
-      <p class="exits">Exits: <span id="room-exits">—</span></p>
-    </section>
-
-    <section class="card">
-      <h2>Chronicle</h2>
-      <div id="chronicle" class="chronicle"></div>
-      <form id="cmd-form" class="inline-form">
-        <input id="cmd-input" type="text" placeholder="Enter a command" autocomplete="off" />
-        <button type="submit">Send</button>
+        <p id="authError" class="error-msg"></p>
+        <div class="login-row" style="margin-top: 14px;">
+          <button id="authSubmitBtn" type="submit">Log In</button>
+        </div>
       </form>
     </section>
-  </main>
 
+    <section id="charPanel" class="panel login" hidden>
+      <h2>Choose Your Character</h2>
+      <p>Signed in as <strong id="accountBanner">—</strong></p>
+      <div id="charList" class="char-list"></div>
+      <hr class="divider" />
+      <h2>Create New Character</h2>
+      <form id="createCharForm">
+        <label for="newCharName">Character Name</label>
+        <input id="newCharName" type="text" placeholder="3–20 letters" required />
+        <label for="newCharGuild">Starting Guild</label>
+        <select id="newCharGuild">
+          <option value="sorcerer">Sorcerer (Arcane / Chaos)</option>
+          <option value="battle_mage">Battle Mage (Elemental &amp; Pet)</option>
+          <option value="berserker">Berserker (Rage &amp; Lifesteal)</option>
+          <option value="cleric">Cleric (Devotion &amp; Mending)</option>
+          <option value="ranger">Ranger (Focus &amp; Wolf Companion)</option>
+          <option value="paladin">Paladin (Zeal &amp; Sunfire)</option>
+          <option value="thief">Thief (Guile &amp; Ambush)</option>
+        </select>
+        <p id="charError" class="error-msg"></p>
+        <div class="login-row" style="margin-top: 14px;">
+          <button type="submit">Create Character</button>
+        </div>
+      </form>
+    </section>
+
+    <main id="game" class="game-grid" hidden>
+      <aside class="panel stats">
+        <h2>Character</h2>
+        <dl>
+          <dt>Name</dt><dd id="statName">—</dd>
+          <dt>Guild</dt><dd id="statGuild">—</dd>
+          <dt>Rank</dt><dd id="statRank">1</dd>
+          <dt>Health</dt>
+          <dd>
+            <span id="statHp">100 / 100</span>
+            <div class="meter"><span id="hpBar"></span></div>
+          </dd>
+          <dt>Resource</dt>
+          <dd>
+            <span id="statResource">100 / 100</span>
+            <div class="meter resource"><span id="resourceBar"></span></div>
+          </dd>
+          <dt>Kronars</dt><dd id="statKronars">50</dd>
+        </dl>
+        <p class="small" style="margin-top: 16px;">
+          Commands: help, look, directions, guild, strike, summon, attune, unleash, train, shop, buy, say, logout.
+        </p>
+      </aside>
+
+      <div class="main-column">
+        <section class="panel location">
+          <p class="eyebrow">CURRENT LOCATION</p>
+          <h2 id="roomTitle">The Whispering Fen</h2>
+          <pre id="ambient"></pre>
+          <p id="roomDescription">Waiting for the world...</p>
+          <pre id="animation"></pre>
+          <p id="entities" class="entities"></p>
+          <p class="exits">Exits: <span id="roomExits">—</span></p>
+        </section>
+
+        <section class="panel log-panel">
+          <h2>Chronicle</h2>
+          <div id="log" class="log"></div>
+          <form id="commandForm" class="command-row">
+            <label for="command" class="sr-only">Command</label>
+            <input id="command" type="text" placeholder="Enter a command" autocomplete="off" />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <footer>Aetheria Web MUD · Keep this tab open while playing</footer>
+  </div>
+
+  <script src="animations.js"></script>
   <script src="client.js"></script>
 </body>
 </html>
