@@ -1,99 +1,127 @@
-/* Browser client for the JSON message protocol in the supplied Aetheria server.py guide. */
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const connection = $("connection");
-  const loginPanel = $("loginPanel");
-  const game = $("game");
-  const loginForm = $("loginForm");
-  const commandForm = $("commandForm");
-  const logBox = $("log");
-  let socket = null;
-  let character = "";
-  let stage = null;
+const wsProto = location.protocol === "https:" ? "wss" : "ws";
+const ws = new WebSocket(`${wsProto}://${location.host}/ws`);
 
-  function socketUrl() {
-    const local = ["localhost", "127.0.0.1"].includes(location.hostname);
-    if (local) return `ws://${location.hostname}:8765`;
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    return `${scheme}//${location.host}/ws`;
+let authMode = "login";
+
+const statusText = document.getElementById("status-text");
+const statusDot = document.getElementById("status-dot");
+const authPanel = document.getElementById("auth-panel");
+const charPanel = document.getElementById("char-select-panel");
+const gamePanel = document.getElementById("game-panel");
+
+ws.onopen = () => {
+  statusText.textContent = "CONNECTED";
+  statusDot.style.color = "#4ade80";
+};
+
+ws.onclose = () => {
+  statusText.textContent = "DISCONNECTED";
+  statusDot.style.color = "#f87171";
+};
+
+document.getElementById("tab-login").onclick = () => {
+  authMode = "login";
+  document.getElementById("tab-login").classList.add("active");
+  document.getElementById("tab-register").classList.remove("active");
+  document.getElementById("auth-submit").textContent = "Log In";
+  document.getElementById("auth-error").textContent = "";
+};
+
+document.getElementById("tab-register").onclick = () => {
+  authMode = "register";
+  document.getElementById("tab-register").classList.add("active");
+  document.getElementById("tab-login").classList.remove("active");
+  document.getElementById("auth-submit").textContent = "Create Account";
+  document.getElementById("auth-error").textContent = "";
+};
+
+document.getElementById("auth-form").onsubmit = (e) => {
+  e.preventDefault();
+  ws.send(JSON.stringify({
+    action: authMode,
+    username: document.getElementById("auth-user").value,
+    password: document.getElementById("auth-pass").value,
+  }));
+};
+
+document.getElementById("create-char-form").onsubmit = (e) => {
+  e.preventDefault();
+  const input = document.getElementById("new-char-name");
+  ws.send(JSON.stringify({ action: "create_character", name: input.value }));
+  input.value = "";
+};
+
+document.getElementById("cmd-form").onsubmit = (e) => {
+  e.preventDefault();
+  const input = document.getElementById("cmd-input");
+  if (!input.value.trim()) return;
+  ws.send(JSON.stringify({ command: input.value }));
+  input.value = "";
+};
+
+function renderCharacterList(characters) {
+  const list = document.getElementById("char-list");
+  list.innerHTML = "";
+  if (!characters.length) {
+    list.innerHTML = `<p class="muted">No characters yet. Create one below to begin.</p>`;
+    return;
   }
-  function setConnection(ok, message) {
-    connection.textContent = ok ? "● CONNECTED" : "● DISCONNECTED";
-    connection.className = `connection ${ok ? "connected" : "disconnected"}`;
-    if (message) addLog(message, ok ? "system" : "error");
-  }
-  function addLog(message, style = "") {
-    const p = document.createElement("p");
-    if (["system", "combat", "error"].includes(style)) p.className = style;
-    p.textContent = String(message ?? "");
-    logBox.appendChild(p);
-    logBox.scrollTop = logBox.scrollHeight;
-  }
-  function sendCommand(command) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      addLog("Not connected. Refresh the page and try again.", "error");
-      return;
-    }
-    socket.send(JSON.stringify({ command }));
-  }
-  function updateVitals(data) {
-    $("statName").textContent = character || "—";
-    $("statGuild").textContent = data.guild ?? "—";
-    $("statRank").textContent = data.rank ?? "—";
-    const hp = Number(data.hp) || 0, maxHp = Math.max(1, Number(data.max_hp) || 1);
-    const resource = Number(data.resource) || 0, maxResource = Math.max(1, Number(data.max_resource) || 1);
-    $("statHp").textContent = `${hp} / ${maxHp}`;
-    $("hpBar").style.width = `${Math.max(0, Math.min(100, hp / maxHp * 100))}%`;
-    $("statResource").textContent = `${resource} / ${maxResource}`;
-    $("resourceBar").style.width = `${Math.max(0, Math.min(100, resource / maxResource * 100))}%`;
-    $("statKronars").textContent = data.kronars ?? 0;
-  }
-  function handleMessage(raw) {
-    let data;
-    try { data = JSON.parse(raw); } catch { addLog(raw); return; }
-    switch (data.type) {
-      case "text": addLog(data.text, data.style); break;
-      case "vitals": updateVitals(data); break;
-      case "room":
-        $("roomTitle").textContent = data.title || "Unknown location";
-        $("roomDescription").textContent = data.description || "";
-        $("entities").textContent = data.entities || "";
-        $("roomExits").textContent = data.exits || "none";
-        if (stage) stage.startAmbient(data.ambient || "marsh");
-        break;
-      case "anim": if (stage) stage.play(data.effect, data.speed); break;
-      default: addLog(`Unrecognized server message: ${raw}`);
-    }
-  }
-  function connect(name) {
-    character = name.trim().slice(0, 20);
-    if (!character) return;
-    try { socket = new WebSocket(socketUrl()); }
-    catch (err) { setConnection(false, `Could not create WebSocket: ${err.message}`); return; }
-    socket.addEventListener("open", () => {
-      setConnection(true, "Connection established. Entering the realm…");
-      loginPanel.hidden = true;
-      game.hidden = false;
-      stage = new AsciiStagePlayer("animation", "ambient");
-      sendCommand(character);
-      $("command").focus();
-    });
-    socket.addEventListener("message", (event) => handleMessage(event.data));
-    socket.addEventListener("error", () => setConnection(false, "WebSocket connection error."));
-    socket.addEventListener("close", () => setConnection(false, "Connection closed. Refresh to reconnect."));
-  }
-  loginForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    connect($("characterName").value);
+  characters.forEach((c) => {
+    const row = document.createElement("div");
+    row.className = "char-row";
+    row.innerHTML = `
+      <div>
+        <strong>${c.name}</strong>
+        <span class="muted"> — ${c.guild_id || "Unguilded"} (Rank ${c.rank})</span>
+      </div>
+      <button type="button">Enter Aetheria</button>
+    `;
+    row.querySelector("button").onclick = () => {
+      ws.send(JSON.stringify({ action: "select_character", name: c.name }));
+    };
+    list.appendChild(row);
   });
-  commandForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const field = $("command");
-    const command = field.value.trim();
-    if (!command) return;
-    addLog(`> ${command}`);
-    sendCommand(command);
-    field.value = "";
-    field.focus();
-  });
-})();
+}
+
+function appendLog(text, style = "system") {
+  const log = document.getElementById("chronicle");
+  const line = document.createElement("div");
+  line.className = `log-line log-${style}`;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === "auth_error") {
+    document.getElementById("auth-error").textContent = msg.message;
+  } else if (msg.type === "auth_ok") {
+    authPanel.classList.add("hidden");
+    charPanel.classList.remove("hidden");
+    document.getElementById("logged-in-user").textContent = msg.username;
+    renderCharacterList(msg.characters);
+  } else if (msg.type === "char_error") {
+    document.getElementById("char-error").textContent = msg.message;
+  } else if (msg.type === "char_list") {
+    document.getElementById("char-error").textContent = "";
+    renderCharacterList(msg.characters);
+  } else if (msg.type === "enter_world") {
+    charPanel.classList.add("hidden");
+    gamePanel.classList.remove("hidden");
+  } else if (msg.type === "state") {
+    document.getElementById("hud-name").textContent = msg.player.name;
+    document.getElementById("hud-guild").textContent = msg.player.guild;
+    document.getElementById("hud-rank").textContent = msg.player.rank;
+    document.getElementById("hud-hp").textContent = `${msg.player.hp} / ${msg.player.max_hp}`;
+    document.getElementById("hud-res").textContent = `${msg.player.resource} / ${msg.player.max_resource}`;
+    document.getElementById("hud-kronars").textContent = msg.player.kronars;
+
+    document.getElementById("room-name").textContent = msg.room.name;
+    document.getElementById("room-desc").textContent = msg.room.description;
+    document.getElementById("room-exits").textContent = msg.room.exits;
+  } else if (msg.type === "log") {
+    appendLog(msg.text, msg.style);
+  }
+};
