@@ -141,13 +141,48 @@
     $("newCharName").value = "";
   });
 
-  $("commandForm"). addEventListener("submit", ( e) => {
-e. preventDefault();
-const field = $("command"), command = field. value. trim();
-if (! command) return;
-addLog(`> ${ command}`);
-sendPayload({ command });
-field. value = "";
-field. focus();
+ $("commandForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const field = $("command"), command = field.value.trim();
+  if (!command) return;
+
+  if (commandHistory[commandHistory.length - 1] !== command) {
+    commandHistory.push(command);
+    if (commandHistory.length > 10) commandHistory.shift();
+  }
+  historyIndex = -1;
+  draftCommand = "";
+
+  addLog(`> ${command}`);
+  sendPayload({ command });
+  field.value = "";
+  field.focus();
+});
+
+$("command").addEventListener("keydown", (e) => {
+  const field = $("command");
+  if (e.key === "ArrowUp") {
+    if (!commandHistory.length) return;
+    e.preventDefault();
+    if (historyIndex === -1) {
+      draftCommand = field.value;
+      historyIndex = commandHistory.length - 1;
+    } else if (historyIndex > 0) {
+      historyIndex--;
+    }
+    field.value = commandHistory[historyIndex];
+    field.setSelectionRange(field.value.length, field.value.length);
+  } else if (e.key === "ArrowDown") {
+    if (historyIndex === -1) return;
+    e.preventDefault();
+    if (historyIndex < commandHistory.length - 1) {
+      historyIndex++;
+      field.value = commandHistory[historyIndex];
+    } else {
+      historyIndex = -1;
+      field.value = draftCommand;
+    }
+    field.setSelectionRange(field.value.length, field.value.length);
+  }
 });
 })();
