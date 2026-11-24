@@ -512,6 +512,10 @@ async def world_tick_loop():
                         if target["hp"] <= 0:
                             await handle_creature_defeat(p, target)
 
+async def handle_player_death(player: dict, killer_name: str):
+    # Broadcast death to the old room, reset vitals/room to guild start, save to MySQL, and notify player
+    ...
+           
             if vitals_changed:
                 try:
                     await send_vitals(p)
