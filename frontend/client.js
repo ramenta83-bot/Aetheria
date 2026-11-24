@@ -6,6 +6,8 @@
   const game = $("game");
   const logBox = $("log");
   let socket = null, character = "", stage = null, authMode = "login";
+  const commandHistory = [];
+  let historyIndex = -1, draftCommand = "";
 
   function socketUrl() {
     if (["localhost", "127.0.0.1"].includes(location.hostname)) return `ws://${location.hostname}:8765`;
@@ -139,13 +141,13 @@
     $("newCharName").value = "";
   });
 
-  $("commandForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const field = $("command"), command = field.value.trim();
-    if (!command) return;
-    addLog(`> ${command}`);
-    sendPayload({ command });
-    field.value = "";
-    field.focus();
-  });
+  $("commandForm"). addEventListener("submit", ( e) => {
+e. preventDefault();
+const field = $("command"), command = field. value. trim();
+if (! command) return;
+addLog(`> ${ command}`);
+sendPayload({ command });
+field. value = "";
+field. focus();
+});
 })();
